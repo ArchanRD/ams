@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { onAuthStateChanged } from "firebase/auth";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -23,7 +23,7 @@ import {
 import { getFirebaseAuth } from "@/lib/firebase";
 import { markAttendanceForDate, unmarkAttendanceForDate } from "@/lib/attendance-api";
 
-export default function AdminScanPage() {
+function AdminScanPageContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -664,6 +664,14 @@ export default function AdminScanPage() {
         </div>
       ) : null}
     </main>
+  );
+}
+
+export default function AdminScanPage() {
+  return (
+    <Suspense fallback={<MembersPageSkeleton />}>
+      <AdminScanPageContent />
+    </Suspense>
   );
 }
 

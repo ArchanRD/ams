@@ -26,7 +26,7 @@ export default function NotFoundPage() {
         </p>
 
         <div className="mt-8">
-          <Button asChild size="lg" className="h-11 px-5">
+          <Button size="lg" className="h-11 px-5">
             <Link href="/">
               <ArrowLeft className="size-4" />
               Back to Dashboard
