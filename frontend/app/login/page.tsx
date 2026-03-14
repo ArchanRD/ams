@@ -10,7 +10,6 @@ import {
   browserSessionPersistence,
   setPersistence,
   signInWithEmailAndPassword,
-  signOut,
 } from "firebase/auth";
 import { FirebaseError } from "firebase/app";
 
@@ -20,18 +19,10 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Checkbox } from "@/components/ui/checkbox";
 import { getFirebaseAuth } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
@@ -94,16 +85,6 @@ export default function LoginPage() {
     }
   };
 
-  const handleLogout = async () => {
-    try {
-      await signOut(getFirebaseAuth());
-    } catch {
-      // Keep UX predictable even if signOut fails remotely.
-    }
-
-    form.reset();
-  };
-
   return (
     <div className="min-h-screen flex flex-col justify-center py-12 sm:px-6 lg:px-8 bg-gray-50 dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-950">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
@@ -131,6 +112,25 @@ export default function LoginPage() {
                 onSubmit={form.handleSubmit(onSubmit)}
                 className="space-y-6"
               >
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="email"
+                          placeholder="you@example.com"
+                          {...field}
+                          className="text-zinc-900 dark:text-zinc-100 h-10"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
                 <FormField
                   control={form.control}
                   name="password"

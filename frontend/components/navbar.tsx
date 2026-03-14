@@ -21,6 +21,9 @@ export function Navbar({ brandName = "AMS" }: NavbarProps) {
     const auth = getFirebaseAuth();
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
       setUser(nextUser);
+      if (!nextUser) {
+        setIsProfileOpen(false);
+      }
     });
 
     return () => {
@@ -45,7 +48,7 @@ export function Navbar({ brandName = "AMS" }: NavbarProps) {
     };
   }, []);
 
-  const userEmail = user?.email?.trim() || "user@example.com";
+  const userEmail = user?.email?.trim() ?? "";
 
   const avatarLabel = useMemo(() => {
     const seed = userEmail.split("@")[0]?.trim() || "U";
@@ -53,7 +56,7 @@ export function Navbar({ brandName = "AMS" }: NavbarProps) {
   }, [userEmail]);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-zinc-200 bg-white/90 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/90">
+    <header className="fixed w-full top-0 z-40 border-b border-zinc-200 bg-white/90 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/90">
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4">
         <Link href={"/"} className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center object-cover justify-center rounded bg-linear-to-br from-emerald-500 to-teal-500 text-sm font-bold text-white shadow-sm">
@@ -66,37 +69,39 @@ export function Navbar({ brandName = "AMS" }: NavbarProps) {
           </div>
         </Link>
 
-        <div className="relative" ref={menuContainerRef}>
-          <button
-            type="button"
-            className="flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-emerald-100 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
-            aria-expanded={isProfileOpen}
-            aria-haspopup="menu"
-            onClick={() => setIsProfileOpen((previous) => !previous)}
-          >
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-linear-to-br from-emerald-500 to-teal-500 text-sm font-semibold text-white">
-              {avatarLabel}
-            </span>
-            <span className="hidden max-w-36 truncate sm:block">{userEmail.split("@")[0]}</span>
-            <ChevronDown className={`size-4 transition ${isProfileOpen ? "rotate-180" : "rotate-0"}`} />
-          </button>
-
-          {isProfileOpen ? (
-            <div
-              className="dialog-panel absolute right-0 z-50 mt-2 w-56 rounded-xl border border-emerald-200 bg-white p-2 shadow-xl dark:border-zinc-800 dark:bg-zinc-900"
-              role="menu"
+        {user ? (
+          <div className="relative" ref={menuContainerRef}>
+            <button
+              type="button"
+              className="flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-emerald-100 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
+              aria-expanded={isProfileOpen}
+              aria-haspopup="menu"
+              onClick={() => setIsProfileOpen((previous) => !previous)}
             >
-              <p className="px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400">Signed in as</p>
-              <p className="px-3 pb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                {userEmail}
-              </p>
-              <LogoutButton
-                className="h-9 w-full justify-start rounded-lg px-3"
-                onLoggedOut={() => setIsProfileOpen(false)}
-              />
-            </div>
-          ) : null}
-        </div>
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-linear-to-br from-emerald-500 to-teal-500 text-sm font-semibold text-white">
+                {avatarLabel}
+              </span>
+              <span className="hidden max-w-36 truncate sm:block">{userEmail.split("@")[0]}</span>
+              <ChevronDown className={`size-4 transition ${isProfileOpen ? "rotate-180" : "rotate-0"}`} />
+            </button>
+
+            {isProfileOpen ? (
+              <div
+                className="dialog-panel absolute right-0 z-50 mt-2 w-56 rounded-xl border border-emerald-200 bg-white p-2 shadow-xl dark:border-zinc-800 dark:bg-zinc-900"
+                role="menu"
+              >
+                <p className="px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400">Signed in as</p>
+                <p className="px-3 pb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                  {userEmail}
+                </p>
+                <LogoutButton
+                  className="h-9 w-full justify-start rounded-lg px-3"
+                  onLoggedOut={() => setIsProfileOpen(false)}
+                />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </header>
   );
