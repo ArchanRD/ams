@@ -1,0 +1,28 @@
+{
+  "name": "attendance-backend",
+  "version": "1.0.0",
+  "description": "Attendance management backend API",
+  "main": "src/server.js",
+  "scripts": {
+    "test": "node -e \"console.log('No tests configured yet')\"",
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "exceljs": "^4.4.0",
+    "express": "^5.2.1",
+    "firebase-admin": "^13.7.0",
+    "helmet": "^8.1.0",
+    "morgan": "^1.10.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
