@@ -31,6 +31,13 @@ export type UnmarkAttendanceResult = {
   unmarked: boolean;
 };
 
+export type UpdateAttendancePrasadamResult = {
+  memberId: string;
+  date: string;
+  status: AttendanceStatus | null;
+  prasadam: number;
+};
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "");
 
 const buildApiUrl = (path: string) => {
@@ -428,4 +435,72 @@ export const unmarkAttendanceForDate = async (
   }
 
   return result;
+};
+
+export const exportAttendanceToExcel = async (
+  from: string,
+  to: string,
+): Promise<void> => {
+  const authHeaders = await getAuthHeaders();
+  const url = buildApiUrl(
+    `/api/attendance/export?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+  );
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: { ...authHeaders },
+  });
+
+  if (!response.ok) {
+    const payload = await readJsonSafely(response);
+    throw new Error(
+      getErrorMessageFromPayload(payload, "Unable to export attendance."),
+    );
+  }
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = `attendance_${from}_to_${to}.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(objectUrl);
+};
+
+export const updateAttendancePrasadamForDate = async (
+  memberId: string,
+  date: string,
+  prasadam: number,
+): Promise<UpdateAttendancePrasadamResult> => {
+  const normalizedDate = normalizeAttendanceDate(date);
+  const payload = await requestJson<{ data?: Record<string, unknown> }>(
+    "/api/attendance/prasadam",
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        memberId,
+        date: normalizedDate,
+        prasadam,
+      }),
+    },
+    "Unable to update prasadam count.",
+  );
+
+  const data = payload?.data;
+  return {
+    memberId,
+    date: normalizedDate,
+    status:
+      data?.status === "PRESENT" ||
+      data?.status === "ABSENT" ||
+      data?.status === "HALF_DAY"
+        ? data.status
+        : null,
+    prasadam:
+      typeof data?.prasadam === "number" && Number.isFinite(data.prasadam)
+        ? Math.max(0, data.prasadam)
+        : 0,
+  };
 };

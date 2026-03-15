@@ -13,6 +13,7 @@ export type Member = {
   email?: string;
   attendanceStatus?: AttendanceStatus | null;
   attendedToday: boolean;
+  prasadam: number;
 };
 
 export type MemberType = "devotee" | "volunteer";
@@ -38,6 +39,20 @@ export type MemberPresentDaysByMonth = {
   month: string;
   days: string[];
   presentDaysCount: number;
+};
+
+export type MemberImportError = {
+  row: number;
+  name: string;
+  message: string;
+};
+
+export type MemberImportResult = {
+  total: number;
+  created: number;
+  existing: number;
+  attendanceMarked: number;
+  errors: MemberImportError[];
 };
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "");
@@ -147,6 +162,25 @@ const parseAttendanceStatus = (raw: Record<string, unknown>) => {
   }
 
   return null;
+};
+
+const parsePrasadam = (raw: Record<string, unknown>) => {
+  if (typeof raw.prasadam === "number" && Number.isFinite(raw.prasadam)) {
+    return Math.max(0, raw.prasadam);
+  }
+
+  const attendance = raw.attendance;
+  if (attendance && typeof attendance === "object") {
+    const attendanceRecord = attendance as Record<string, unknown>;
+    if (
+      typeof attendanceRecord.prasadam === "number" &&
+      Number.isFinite(attendanceRecord.prasadam)
+    ) {
+      return Math.max(0, attendanceRecord.prasadam);
+    }
+  }
+
+  return 0;
 };
 
 const parseAttendedForDate = (
@@ -261,6 +295,7 @@ const toMember = (raw: unknown, selectedDate?: string): Member | null => {
     email: typeof record.email === "string" ? record.email : undefined,
     attendanceStatus: parseAttendanceStatus(record),
     attendedToday: parseAttendedForDate(record, selectedDate),
+    prasadam: parsePrasadam(record),
   };
 };
 
@@ -483,4 +518,104 @@ export const getMemberPresentDaysByMonth = async (
         ? rawCount
         : days.length,
   } satisfies MemberPresentDaysByMonth;
+};
+
+export const importMembersFile = async (
+  file: File,
+): Promise<MemberImportResult> => {
+  const authHeaders = await getAuthHeaders();
+  const response = await fetch(buildApiUrl("/api/members/import"), {
+    method: "POST",
+    headers: {
+      ...authHeaders,
+      "Content-Type":
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    },
+    body: await file.arrayBuffer(),
+  });
+
+  const payload = await readJsonSafely(response);
+  if (!response.ok) {
+    throw new Error(getErrorMessage(payload, "Unable to import members."));
+  }
+
+  const record =
+    payload && typeof payload === "object"
+      ? (payload as Record<string, unknown>)
+      : null;
+  const data =
+    record?.data && typeof record.data === "object"
+      ? (record.data as Record<string, unknown>)
+      : null;
+  const rawErrors = Array.isArray(data?.errors) ? data.errors : [];
+
+  return {
+    total:
+      typeof data?.total === "number" && Number.isFinite(data.total)
+        ? data.total
+        : 0,
+    created:
+      typeof data?.created === "number" && Number.isFinite(data.created)
+        ? data.created
+        : 0,
+    existing:
+      typeof data?.existing === "number" && Number.isFinite(data.existing)
+        ? data.existing
+        : 0,
+    attendanceMarked:
+      typeof data?.attendanceMarked === "number" &&
+      Number.isFinite(data.attendanceMarked)
+        ? data.attendanceMarked
+        : 0,
+    errors: rawErrors
+      .map((item) => {
+        if (!item || typeof item !== "object") {
+          return null;
+        }
+
+        const errorRecord = item as Record<string, unknown>;
+        return {
+          row:
+            typeof errorRecord.row === "number" && Number.isFinite(errorRecord.row)
+              ? errorRecord.row
+              : 0,
+          name:
+            typeof errorRecord.name === "string"
+              ? errorRecord.name
+              : "Unknown member",
+          message:
+            typeof errorRecord.message === "string"
+              ? errorRecord.message
+              : "Unable to import this row.",
+        } satisfies MemberImportError;
+      })
+      .filter((item): item is MemberImportError => item !== null),
+  } satisfies MemberImportResult;
+};
+
+export const downloadMemberImportTemplate = async (): Promise<void> => {
+  const authHeaders = await getAuthHeaders();
+  const response = await fetch(buildApiUrl("/api/members/import/template"), {
+    method: "GET",
+    headers: {
+      ...authHeaders,
+    },
+  });
+
+  if (!response.ok) {
+    const payload = await readJsonSafely(response);
+    throw new Error(
+      getErrorMessage(payload, "Unable to download import template."),
+    );
+  }
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = "members_import_template.xlsx";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(objectUrl);
 };

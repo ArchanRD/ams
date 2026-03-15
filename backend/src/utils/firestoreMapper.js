@@ -31,6 +31,7 @@ const mapAttendanceDoc = (doc) => {
     memberPhone: data.memberPhone || data.userPhone,
     date: data.date,
     status: data.status,
+    prasadam: typeof data.prasadam === 'number' ? data.prasadam : 0,
     markedBy: data.markedBy,
     createdAt: toISO(data.createdAt),
     updatedAt: toISO(data.updatedAt),

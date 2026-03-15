@@ -27,7 +27,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${dmSans.variable} ${openSans.variable}`}>
-        <Navbar brandName="ISCKON Gandhinagar" />
+        <Navbar brandName="ISKCON Gandhinagar" />
         <div className="mt-10">
         {children}
         </div>

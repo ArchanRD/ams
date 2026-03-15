@@ -9,12 +9,13 @@ const ATTENDANCE_COLLECTION = 'attendance';
 
 const getAttendanceDocId = (date, memberId) => `${date}_${memberId}`;
 
-const markAttendance = async ({ memberId, date, status, markedBy, overwrite = false }) => {
+const markAttendance = async ({ memberId, date, status, prasadam = 0, markedBy, overwrite = false }) => {
   const db = getFirestore();
   const member = await getMemberById(memberId);
   const attendanceDocId = getAttendanceDocId(date, memberId);
   const attendanceRef = db.collection(ATTENDANCE_COLLECTION).doc(attendanceDocId);
   const existingDoc = await attendanceRef.get();
+  const existingData = existingDoc.exists ? existingDoc.data() : null;
 
   if (existingDoc.exists && !overwrite) {
     throw new ApiError(
@@ -29,11 +30,58 @@ const markAttendance = async ({ memberId, date, status, markedBy, overwrite = fa
     memberPhone: member.phone,
     date,
     status,
+    prasadam:
+      typeof prasadam === 'number'
+        ? prasadam
+        : typeof existingData?.prasadam === 'number'
+          ? existingData.prasadam
+          : 0,
     markedBy,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
 
   // Keep createdAt immutable for updates and set it only once.
+  if (!existingDoc.exists) {
+    payload.createdAt = admin.firestore.FieldValue.serverTimestamp();
+  }
+
+  await attendanceRef.set(payload, { merge: true });
+
+  const savedDoc = await attendanceRef.get();
+  return mapAttendanceDoc(savedDoc);
+};
+
+const updateAttendancePrasadam = async ({ memberId, date, prasadam, markedBy }) => {
+  const db = getFirestore();
+  const attendanceDocId = getAttendanceDocId(date, memberId);
+  const attendanceRef = db.collection(ATTENDANCE_COLLECTION).doc(attendanceDocId);
+  const existingDoc = await attendanceRef.get();
+
+  if (!existingDoc.exists && prasadam === 0) {
+    return {
+      memberId,
+      date,
+      status: null,
+      prasadam: 0,
+      markedBy: null,
+      updated: false,
+    };
+  }
+
+  const member = await getMemberById(memberId);
+  const existingData = existingDoc.exists ? existingDoc.data() : null;
+
+  const payload = {
+    memberId,
+    memberName: member.name,
+    memberPhone: member.phone,
+    date,
+    status: existingData?.status || 'PRESENT',
+    prasadam,
+    markedBy: existingData?.markedBy || markedBy,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
   if (!existingDoc.exists) {
     payload.createdAt = admin.firestore.FieldValue.serverTimestamp();
   }
@@ -96,6 +144,7 @@ const buildAttendanceWorkbook = async ({ from, to }) => {
     { header: 'Member Name', key: 'memberName', width: 24 },
     { header: 'Phone', key: 'memberPhone', width: 16 },
     { header: 'Status', key: 'status', width: 14 },
+    { header: 'Prasadam', key: 'prasadam', width: 14 },
     { header: 'Marked By (UID)', key: 'markedBy', width: 30 },
   ];
 
@@ -105,6 +154,7 @@ const buildAttendanceWorkbook = async ({ from, to }) => {
       memberName: row.memberName,
       memberPhone: row.memberPhone,
       status: row.status,
+      prasadam: row.prasadam,
       markedBy: row.markedBy,
     });
   });
@@ -116,6 +166,7 @@ const buildAttendanceWorkbook = async ({ from, to }) => {
 
 module.exports = {
   markAttendance,
+  updateAttendancePrasadam,
   unmarkAttendance,
   listAttendance,
   buildAttendanceWorkbook,

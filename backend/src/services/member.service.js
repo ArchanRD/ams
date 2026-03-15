@@ -30,34 +30,32 @@ const attachAttendanceStatus = async (db, members, date) => {
     .where("date", "==", attendanceDate)
     .get();
   const statusByMemberKey = new Map();
+  const prasadamByMemberKey = new Map();
 
   snapshot.forEach((doc) => {
     const data = doc.data();
 
-    if (!data.status) {
-      return;
-    }
+    const status = data.status || null;
+    const prasadam = typeof data.prasadam === "number" ? data.prasadam : 0;
 
     if (data.memberId) {
-      statusByMemberKey.set(`id:${data.memberId}`, data.status);
+      statusByMemberKey.set(`id:${data.memberId}`, status);
+      prasadamByMemberKey.set(`id:${data.memberId}`, prasadam);
     }
 
     if (data.userId) {
-      statusByMemberKey.set(`id:${data.userId}`, data.status);
+      statusByMemberKey.set(`id:${data.userId}`, status);
+      prasadamByMemberKey.set(`id:${data.userId}`, prasadam);
     }
 
     if (data.memberPhone) {
-      statusByMemberKey.set(
-        `phone:${normalizePhone(data.memberPhone)}`,
-        data.status,
-      );
+      statusByMemberKey.set(`phone:${normalizePhone(data.memberPhone)}`, status);
+      prasadamByMemberKey.set(`phone:${normalizePhone(data.memberPhone)}`, prasadam);
     }
 
     if (data.userPhone) {
-      statusByMemberKey.set(
-        `phone:${normalizePhone(data.userPhone)}`,
-        data.status,
-      );
+      statusByMemberKey.set(`phone:${normalizePhone(data.userPhone)}`, status);
+      prasadamByMemberKey.set(`phone:${normalizePhone(data.userPhone)}`, prasadam);
     }
   });
 
@@ -67,10 +65,15 @@ const attachAttendanceStatus = async (db, members, date) => {
       statusByMemberKey.get(`id:${member.id}`) ||
       statusByMemberKey.get(`phone:${normalizedMemberPhone}`) ||
       null;
+    const prasadam =
+      prasadamByMemberKey.get(`id:${member.id}`) ??
+      prasadamByMemberKey.get(`phone:${normalizedMemberPhone}`) ??
+      0;
 
     return {
       ...member,
       attendanceStatus,
+      prasadam,
     };
   });
 };

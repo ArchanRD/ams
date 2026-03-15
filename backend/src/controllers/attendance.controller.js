@@ -2,10 +2,12 @@ const { ApiError } = require('../utils/apiError');
 const {
   markAttendanceSchema,
   unmarkAttendanceSchema,
+  updatePrasadamSchema,
   attendanceRangeSchema,
 } = require('../validations/attendance.validation');
 const {
   markAttendance,
+  updateAttendancePrasadam,
   unmarkAttendance,
   listAttendance,
   buildAttendanceWorkbook,
@@ -59,6 +61,24 @@ const unmarkMemberAttendance = async (req, res) => {
   });
 };
 
+const updateMemberPrasadam = async (req, res) => {
+  const parsed = updatePrasadamSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    throw new ApiError(400, 'Invalid request body', parsed.error.flatten());
+  }
+
+  const result = await updateAttendancePrasadam({
+    ...parsed.data,
+    markedBy: req.auth.uid,
+  });
+
+  res.json({
+    success: true,
+    data: result,
+  });
+};
+
 const exportAttendance = async (req, res) => {
   const parsed = attendanceRangeSchema.safeParse(req.query);
 
@@ -82,6 +102,7 @@ const exportAttendance = async (req, res) => {
 module.exports = {
   markMemberAttendance,
   unmarkMemberAttendance,
+  updateMemberPrasadam,
   getAttendanceList,
   exportAttendance,
 };

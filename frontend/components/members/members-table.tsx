@@ -18,7 +18,9 @@ type MembersTableProps = {
   isLoading: boolean;
   markingMemberId: string | null;
   unmarkingMemberId: string | null;
+  updatingPrasadamByMemberId: Record<string, boolean>;
   onMarkAttendance: (memberId: string) => void | Promise<void>;
+  onPrasadamChange: (memberId: string, prasadam: number) => void;
   onUnmarkAttendance: (member: Member) => void;
   onEditMember: (member: Member) => void;
   onViewMember: (member: Member) => void;
@@ -29,7 +31,9 @@ export function MembersTable({
   isLoading,
   markingMemberId,
   unmarkingMemberId,
+  updatingPrasadamByMemberId,
   onMarkAttendance,
+  onPrasadamChange,
   onUnmarkAttendance,
   onEditMember,
   onViewMember,
@@ -43,6 +47,7 @@ export function MembersTable({
             <TableHead>Mobile Number</TableHead>
             <TableHead>Type</TableHead>
             <TableHead>Area</TableHead>
+            <TableHead>Prasadam</TableHead>
             <TableHead>Attendance</TableHead>
             <TableHead></TableHead>
             <TableHead>Action</TableHead>
@@ -90,7 +95,27 @@ export function MembersTable({
                     {member.type || "-"}
                   </TableCell>
                   <TableCell>{member.area || "-"}</TableCell>
-                  <TableCell>{member.email || "-"}</TableCell>
+                  <TableCell>
+                    <input
+                      type="number"
+                      min={0}
+                      value={member.prasadam}
+                      onChange={(event) => {
+                        const nextValue = Number.parseInt(event.target.value || "0", 10);
+                        onPrasadamChange(
+                          member.id,
+                          Number.isNaN(nextValue) ? 0 : Math.max(0, nextValue),
+                        );
+                      }}
+                      className="h-10 w-24 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900 outline-none transition focus-visible:ring-2 focus-visible:ring-ring/50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                      aria-label={`Prasadam for ${member.name}`}
+                    />
+                    {updatingPrasadamByMemberId[member.id] ? (
+                      <span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">
+                        Saving...
+                      </span>
+                    ) : null}
+                  </TableCell>
                   <TableCell>
                     <AttendanceStatusBadge
                       status={member.attendanceStatus}

@@ -13,8 +13,10 @@ type MemberMobileCardProps = {
   isPresent: boolean;
   isMarking: boolean;
   isUnmarking: boolean;
+  isUpdatingPrasadam: boolean;
   onEdit: () => void;
   onMarkAttendance: () => void;
+  onPrasadamChange: (prasadam: number) => void;
   onUnmark: () => void;
 };
 
@@ -36,8 +38,10 @@ export function MemberMobileCard({
   isPresent,
   isMarking,
   isUnmarking,
+  isUpdatingPrasadam,
   onEdit,
   onMarkAttendance,
+  onPrasadamChange,
   onUnmark,
 }: MemberMobileCardProps) {
   const stopCardNavigation = (event: MouseEvent<HTMLButtonElement>) => {
@@ -57,6 +61,31 @@ export function MemberMobileCard({
 
         <p className="mt-2 text-sm text-zinc-700 dark:text-zinc-300">Phone: {member.phone || "-"}</p>
         <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">Area: {member.area || "-"}</p>
+        <div className="mt-3">
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500 dark:text-zinc-400">
+            Prasadam
+          </label>
+          <input
+            type="number"
+            min={0}
+            value={member.prasadam}
+            className="h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900 outline-none transition focus-visible:ring-2 focus-visible:ring-ring/50 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            onChange={(event) => {
+              const nextValue = Number.parseInt(event.target.value || "0", 10);
+              onPrasadamChange(Number.isNaN(nextValue) ? 0 : Math.max(0, nextValue));
+            }}
+            aria-label={`Prasadam for ${member.name}`}
+          />
+          {isUpdatingPrasadam ? (
+            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+              Saving...
+            </p>
+          ) : null}
+        </div>
 
         <div className="mt-4 flex items-center gap-2">
           <Button

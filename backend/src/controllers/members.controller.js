@@ -13,6 +13,10 @@ const {
   listMemberPresentDaysByMonth,
   updateMemberById,
 } = require('../services/member.service');
+const {
+  buildImportTemplate,
+  importMembersFromBuffer,
+} = require('../services/import.service');
 
 const listMembers = async (req, res) => {
   const parsed = listMembersSchema.safeParse(req.query);
@@ -54,6 +58,35 @@ const createNewMember = async (req, res) => {
     meta: {
       created: true,
     },
+  });
+};
+
+const getMemberImportTemplate = async (req, res) => {
+  const workbook = await buildImportTemplate();
+
+  res.setHeader(
+    'Content-Type',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  );
+  res.setHeader(
+    'Content-Disposition',
+    'attachment; filename="members_import_template.xlsx"'
+  );
+
+  await workbook.xlsx.write(res);
+  res.end();
+};
+
+const importMembers = async (req, res) => {
+  if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+    throw new ApiError(400, 'Upload a non-empty Excel file.');
+  }
+
+  const result = await importMembersFromBuffer(req.body, req.auth.uid);
+
+  res.json({
+    success: true,
+    data: result,
   });
 };
 
@@ -120,6 +153,8 @@ const getMemberPresentDaysByMonth = async (req, res) => {
 module.exports = {
   listMembers,
   createNewMember,
+  getMemberImportTemplate,
+  importMembers,
   updateMember,
   getMemberDetailsById,
   getMemberPresentDaysByMonth,

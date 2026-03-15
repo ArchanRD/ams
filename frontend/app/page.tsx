@@ -7,9 +7,9 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { MemberModal } from "@/components/members/create-member-modal";
 import { DateSelector } from "@/components/members/date-selector";
+import { ImportMembersModal } from "@/components/members/import-members-modal";
 import { MemberMobileCard } from "@/components/members/member-mobile-card";
 import { MemberSearchBar } from "@/components/members/member-search-bar";
-import { Navbar } from "@/components/navbar";
 import { MembersTable } from "@/components/members/members-table";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,7 +21,13 @@ import {
   updateMember,
 } from "@/lib/member-api";
 import { getFirebaseAuth } from "@/lib/firebase";
-import { markAttendanceForDate, unmarkAttendanceForDate } from "@/lib/attendance-api";
+import {
+  exportAttendanceToExcel,
+  markAttendanceForDate,
+  unmarkAttendanceForDate,
+  updateAttendancePrasadamForDate,
+} from "@/lib/attendance-api";
+import { ExportAttendanceModal } from "@/components/attendance/export-attendance-modal";
 
 function AdminScanPageContent() {
   const router = useRouter();
@@ -44,9 +50,14 @@ function AdminScanPageContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [isDailyCountLoading, setIsDailyCountLoading] = useState(false);
   const [dailyPresentCount, setDailyPresentCount] = useState(0);
+  const [dailyPrasadamCount, setDailyPrasadamCount] = useState(0);
   const [dailyTotalMembers, setDailyTotalMembers] = useState(0);
+  const [refreshTick, setRefreshTick] = useState(0);
   const [markingMemberId, setMarkingMemberId] = useState<string | null>(null);
   const [unmarkingMemberId, setUnmarkingMemberId] = useState<string | null>(null);
+  const [updatingPrasadamByMemberId, setUpdatingPrasadamByMemberId] = useState<
+    Record<string, boolean>
+  >({});
   const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
   const [isSavingMember, setIsSavingMember] = useState(false);
   const [memberModalKey, setMemberModalKey] = useState(0);
@@ -56,6 +67,14 @@ function AdminScanPageContent() {
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [confirmUnmarkMember, setConfirmUnmarkMember] = useState<Member | null>(null);
   const [isUnmarkDialogClosing, setIsUnmarkDialogClosing] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isImportModalClosing, setIsImportModalClosing] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isExportModalClosing, setIsExportModalClosing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const importModalTimerRef = useRef<number | null>(null);
+  const exportModalTimerRef = useRef<number | null>(null);
+  const prasadamTimersRef = useRef<Map<string, number>>(new Map());
   const debounceTimerRef = useRef<number | null>(null);
   const latestRequestRef = useRef(0);
   const unmarkDialogTimerRef = useRef<number | null>(null);
@@ -142,7 +161,7 @@ function AdminScanPageContent() {
         window.clearTimeout(debounceTimerRef.current);
       }
     };
-  }, [isAuthorized, searchValue, selectedDate]);
+  }, [isAuthorized, refreshTick, searchValue, selectedDate]);
 
   useEffect(() => {
     if (!isAuthorized) {
@@ -168,10 +187,12 @@ function AdminScanPageContent() {
     void getMembers("", selectedDate)
       .then((data) => {
         setDailyPresentCount(getPresentCount(data));
+        setDailyPrasadamCount(getPrasadamCount(data));
         setDailyTotalMembers(data.length);
       })
       .catch((error) => {
         setDailyPresentCount(0);
+        setDailyPrasadamCount(0);
         setDailyTotalMembers(0);
         toast.error("Unable to load daily present count", {
           description: getErrorMessage(error),
@@ -180,7 +201,7 @@ function AdminScanPageContent() {
       .finally(() => {
         setIsDailyCountLoading(false);
       });
-  }, [isAuthorized, selectedDate]);
+  }, [isAuthorized, refreshTick, selectedDate]);
 
   const handleSearchChange = (value: string) => {
     setSearchValue(value);
@@ -318,6 +339,7 @@ function AdminScanPageContent() {
               ...member,
               attendanceStatus: "PRESENT",
               attendedToday: result.user.attendedToday,
+              prasadam: member.prasadam ?? 0,
             }
             : member,
         ),
@@ -335,6 +357,80 @@ function AdminScanPageContent() {
     } finally {
       setMarkingMemberId(null);
     }
+  };
+
+  const handlePrasadamChange = (memberId: string, prasadam: number) => {
+    const previousMember = members.find((member) => member.id === memberId);
+    if (!previousMember || previousMember.prasadam === prasadam) {
+      return;
+    }
+
+    setMembers((previous) =>
+      previous.map((member) =>
+        member.id === memberId
+          ? {
+            ...member,
+            prasadam,
+          }
+          : member,
+      ),
+    );
+    setDailyPrasadamCount((previous) =>
+      Math.max(0, previous - previousMember.prasadam + prasadam),
+    );
+
+    const existingTimer = prasadamTimersRef.current.get(memberId);
+    if (existingTimer) {
+      window.clearTimeout(existingTimer);
+    }
+
+    const timerId = window.setTimeout(() => {
+      setUpdatingPrasadamByMemberId((previous) => ({
+        ...previous,
+        [memberId]: true,
+      }));
+
+      void updateAttendancePrasadamForDate(memberId, selectedDate, prasadam)
+        .then((result) => {
+          setMembers((previous) =>
+            previous.map((member) => {
+              if (member.id !== memberId) {
+                return member;
+              }
+
+              const wasPresent =
+                member.attendanceStatus === "PRESENT" || member.attendedToday;
+              const isPresent = result.status === "PRESENT" || wasPresent;
+
+              if (!wasPresent && isPresent) {
+                setDailyPresentCount((count) =>
+                  Math.min(dailyTotalMembers, count + 1),
+                );
+              }
+
+              return {
+                ...member,
+                attendanceStatus: result.status ?? member.attendanceStatus,
+                attendedToday:
+                  result.status === "PRESENT" ? true : member.attendedToday,
+                prasadam: result.prasadam,
+              };
+            }),
+          );
+        })
+        .catch(() => {
+          setRefreshTick((previous) => previous + 1);
+        })
+        .finally(() => {
+          prasadamTimersRef.current.delete(memberId);
+          setUpdatingPrasadamByMemberId((previous) => ({
+            ...previous,
+            [memberId]: false,
+          }));
+        });
+    }, 350);
+
+    prasadamTimersRef.current.set(memberId, timerId);
   };
 
   const handleOpenUnmarkModal = (member: Member) => {
@@ -385,6 +481,7 @@ function AdminScanPageContent() {
               ...member,
               attendanceStatus: null,
               attendedToday: false,
+              prasadam: 0,
             }
             : member,
         ),
@@ -392,6 +489,9 @@ function AdminScanPageContent() {
 
       setDailyPresentCount((previous) =>
         wasMarked ? Math.max(0, previous - 1) : previous,
+      );
+      setDailyPrasadamCount((previous) =>
+        Math.max(0, previous - confirmUnmarkMember.prasadam),
       );
       closeUnmarkDialog();
     } catch (error) {
@@ -406,6 +506,99 @@ function AdminScanPageContent() {
   const handleViewMember = (member: Member) => {
     router.push(getMemberDetailsPath(member.id, searchValue, selectedDate));
   };
+
+  const handleOpenImportModal = () => {
+    if (importModalTimerRef.current) {
+      window.clearTimeout(importModalTimerRef.current);
+      importModalTimerRef.current = null;
+    }
+
+    setIsImportModalClosing(false);
+    setIsImportModalOpen(true);
+  };
+
+  const closeImportModal = () => {
+    setIsImportModalClosing(true);
+
+    if (importModalTimerRef.current) {
+      window.clearTimeout(importModalTimerRef.current);
+    }
+
+    importModalTimerRef.current = window.setTimeout(() => {
+      setIsImportModalOpen(false);
+      setIsImportModalClosing(false);
+      importModalTimerRef.current = null;
+    }, 180);
+  };
+
+  const handleImportComplete = () => {
+    setRefreshTick((previous) => previous + 1);
+  };
+
+  const handleOpenExportModal = () => {
+    if (exportModalTimerRef.current) {
+      window.clearTimeout(exportModalTimerRef.current);
+      exportModalTimerRef.current = null;
+    }
+
+    setIsExportModalClosing(false);
+    setIsExportModalOpen(true);
+  };
+
+  const closeExportModal = () => {
+    setIsExportModalClosing(true);
+
+    if (exportModalTimerRef.current) {
+      window.clearTimeout(exportModalTimerRef.current);
+    }
+
+    exportModalTimerRef.current = window.setTimeout(() => {
+      setIsExportModalOpen(false);
+      setIsExportModalClosing(false);
+      exportModalTimerRef.current = null;
+    }, 180);
+  };
+
+  const handleExport = async (from: string, to: string) => {
+    setIsExporting(true);
+    try {
+      await exportAttendanceToExcel(from, to);
+      closeExportModal();
+    } catch (error) {
+      toast.error("Unable to export attendance", {
+        description: getErrorMessage(error),
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  useEffect(() => {
+    const prasadamTimers = prasadamTimersRef.current;
+
+    return () => {
+      for (const timerId of prasadamTimers.values()) {
+        window.clearTimeout(timerId);
+      }
+      prasadamTimers.clear();
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (importModalTimerRef.current) {
+        window.clearTimeout(importModalTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (exportModalTimerRef.current) {
+        window.clearTimeout(exportModalTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -437,7 +630,7 @@ function AdminScanPageContent() {
             }
           />
           <div className="relative z-10 flex flex-wrap items-start justify-between gap-4">
-            <div className="space-y-2">
+            <div>
               {selectedDateType !== "custom" ? (
                 <span
                   className={
@@ -449,41 +642,82 @@ function AdminScanPageContent() {
                   {selectedDateTypeLabel}
                 </span>
               ) : null}
-              <p
-                className={
-                  selectedDateType === "today"
-                    ? "text-sm font-medium text-emerald-700 dark:text-emerald-300"
-                    : "text-sm font-medium text-zinc-700 dark:text-zinc-300"
-                }
-              >
-                Present Count
-              </p>
-              <p
-                className={
-                  selectedDateType === "today"
-                    ? "text-5xl font-black leading-none text-emerald-800 dark:text-emerald-200"
-                    : "text-5xl font-black leading-none text-zinc-800 dark:text-zinc-100"
-                }
-              >
-                {isDailyCountLoading ? (
-                  <span className="inline-block h-10 w-20 animate-pulse rounded-md bg-black/10 align-middle dark:bg-white/10" />
-                ) : (
-                  dailyPresentCount
-                )}
-              </p>
-              <p
-                className={
-                  selectedDateType === "today"
-                    ? "text-sm font-semibold text-emerald-800 dark:text-emerald-200"
-                    : "text-sm font-semibold text-zinc-700 dark:text-zinc-300"
-                }
-              >
-                {isDailyCountLoading ? (
-                  <span className="inline-block h-5 w-56 animate-pulse rounded bg-black/10 align-middle dark:bg-white/10" />
-                ) : (
-                  `${dailyPresentCount} out of ${dailyTotalMembers} members present`
-                )}
-              </p>
+              <div className="mt-4 grid gap-3 grid-cols-2">
+                <div
+                  className={
+                    selectedDateType === "today"
+                      ? "rounded-2xl border border-emerald-300/70 bg-white/55 p-4 backdrop-blur-sm dark:border-emerald-800/70 dark:bg-emerald-950/20"
+                      : "rounded-2xl border border-zinc-300/70 bg-white/55 p-4 backdrop-blur-sm dark:border-zinc-700 dark:bg-zinc-950/20"
+                  }
+                >
+                  <p
+                    className={
+                      selectedDateType === "today"
+                        ? "text-sm font-medium text-emerald-700 dark:text-emerald-300"
+                        : "text-sm font-medium text-zinc-700 dark:text-zinc-300"
+                    }
+                  >
+                    Attendance Count
+                  </p>
+                  <p
+                    className={
+                      selectedDateType === "today"
+                        ? "mt-2 text-5xl font-black leading-none text-emerald-800 dark:text-emerald-200"
+                        : "mt-2 text-5xl font-black leading-none text-zinc-800 dark:text-zinc-100"
+                    }
+                  >
+                    {isDailyCountLoading ? (
+                      <span className="inline-block h-10 w-20 animate-pulse rounded-md bg-black/10 align-middle dark:bg-white/10" />
+                    ) : (
+                      dailyPresentCount
+                    )}
+                  </p>
+                  <p
+                    className={
+                      selectedDateType === "today"
+                        ? "mt-2 text-sm font-semibold text-emerald-800 dark:text-emerald-200"
+                        : "mt-2 text-sm font-semibold text-zinc-700 dark:text-zinc-300"
+                    }
+                  >
+                    {isDailyCountLoading ? (
+                      <span className="inline-block h-5 w-40 animate-pulse rounded bg-black/10 align-middle dark:bg-white/10" />
+                    ) : (
+                      `${dailyPresentCount}/${dailyTotalMembers} members present`
+                    )}
+                  </p>
+                </div>
+
+                <div
+                  className={
+                    selectedDateType === "today"
+                      ? "rounded-2xl border border-emerald-300/70 bg-white/55 p-4 backdrop-blur-sm dark:border-emerald-800/70 dark:bg-emerald-950/20"
+                      : "rounded-2xl border border-zinc-300/70 bg-white/55 p-4 backdrop-blur-sm dark:border-zinc-700 dark:bg-zinc-950/20"
+                  }
+                >
+                  <p
+                    className={
+                      selectedDateType === "today"
+                        ? "text-sm font-medium text-emerald-700 dark:text-emerald-300"
+                        : "text-sm font-medium text-zinc-700 dark:text-zinc-300"
+                    }
+                  >
+                    Prasadam Count
+                  </p>
+                  <p
+                    className={
+                      selectedDateType === "today"
+                        ? "mt-2 text-5xl font-black leading-none text-emerald-800 dark:text-emerald-200"
+                        : "mt-2 text-5xl font-black leading-none text-zinc-800 dark:text-zinc-100"
+                    }
+                  >
+                    {isDailyCountLoading ? (
+                      <span className="inline-block h-10 w-20 animate-pulse rounded-md bg-black/10 align-middle dark:bg-white/10" />
+                    ) : (
+                      dailyPrasadamCount
+                    )}
+                  </p>
+                </div>
+              </div>
             </div>
             <div className="space-y-1 text-right">
               <p
@@ -552,6 +786,8 @@ function AdminScanPageContent() {
           value={searchValue}
           onChange={handleSearchChange}
           onAddNew={handleOpenCreateModal}
+          onImport={handleOpenImportModal}
+          onExport={handleOpenExportModal}
           visibleCount={members.length}
           totalCount={members.length}
         />
@@ -562,7 +798,9 @@ function AdminScanPageContent() {
             isLoading={isLoading}
             markingMemberId={markingMemberId}
             unmarkingMemberId={unmarkingMemberId}
+            updatingPrasadamByMemberId={updatingPrasadamByMemberId}
             onMarkAttendance={handleMarkAttendance}
+            onPrasadamChange={handlePrasadamChange}
             onUnmarkAttendance={handleOpenUnmarkModal}
             onEditMember={handleOpenUpdateModal}
             onViewMember={handleViewMember}
@@ -592,6 +830,7 @@ function AdminScanPageContent() {
                 member.attendanceStatus === "PRESENT" || member.attendedToday;
               const isMarking = markingMemberId === member.id;
               const isUnmarking = unmarkingMemberId === member.id;
+              const isUpdatingPrasadam = updatingPrasadamByMemberId[member.id] === true;
 
               return (
                 <MemberMobileCard
@@ -601,8 +840,12 @@ function AdminScanPageContent() {
                   isPresent={isPresent}
                   isMarking={isMarking}
                   isUnmarking={isUnmarking}
+                  isUpdatingPrasadam={isUpdatingPrasadam}
                   onEdit={() => handleOpenUpdateModal(member)}
                   onMarkAttendance={() => handleMarkAttendance(member.id)}
+                  onPrasadamChange={(prasadam) =>
+                    handlePrasadamChange(member.id, prasadam)
+                  }
                   onUnmark={() => handleOpenUnmarkModal(member)}
                 />
               );
@@ -624,6 +867,23 @@ function AdminScanPageContent() {
           area: editingMember?.area,
         }}
       />
+
+      {isImportModalOpen ? (
+        <ImportMembersModal
+          isClosing={isImportModalClosing}
+          onClose={closeImportModal}
+          onImportComplete={handleImportComplete}
+        />
+      ) : null}
+
+      {isExportModalOpen ? (
+        <ExportAttendanceModal
+          isClosing={isExportModalClosing}
+          isExporting={isExporting}
+          onExport={handleExport}
+          onClose={closeExportModal}
+        />
+      ) : null}
 
       {confirmUnmarkMember ? (
         <div
@@ -708,6 +968,10 @@ const getPresentCount = (members: Member[]) => {
   return members.filter(
     (member) => member.attendanceStatus === "PRESENT" || member.attendedToday,
   ).length;
+};
+
+const getPrasadamCount = (members: Member[]) => {
+  return members.reduce((total, member) => total + Math.max(0, member.prasadam), 0);
 };
 
 const getSelectedDateType = (selectedDate: string) => {
